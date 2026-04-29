@@ -68,12 +68,7 @@ class DB:
 
         # UPSERT summary counters
         cls._stmts["upsert_summary"] = s.prepare("""
-            UPDATE student_monthly_summary
-            SET total_events    = total_events + ?,
-                total_video_sec = total_video_sec + ?,
-                total_quiz_done = total_quiz_done + ?,
-                last_active     = ?
-            WHERE student_id = ? AND month_bucket = ?
+            INSERT INTO student_monthly_summary (student_id, month_bucket, total_events, total_video_sec,total_quiz_done, last_active) VALUES (?, ?, ?, ?, ?, ?)
         """)
 
         # SELECT high risk

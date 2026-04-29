@@ -187,7 +187,7 @@ async def seed_data(req: BulkSeedRequest):
                 {"device": random.choice(["mobile", "desktop", "tablet"])},
             ))
             total += 1
-        DB.session().execute(batch)
+        DB.session().execute_async(batch)
 
     return {
         "seeded_students": len(students),
@@ -222,7 +222,7 @@ def _update_summary(evt: LearningEvent, ts: datetime):
     try:
         DB.session().execute(
             DB.stmt("upsert_summary"),
-            (1, vid_sec or 0, is_quiz, ts, evt.student_id, month),
+            (evt.student_id, month, 1, vid_sec or 0, is_quiz, ts),
         )
     except Exception:
         pass  # Không ảnh hưởng API response
