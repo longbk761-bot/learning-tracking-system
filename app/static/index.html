@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learning Behavior Tracker – AstraDB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d1117;
+    --bg2:      #161b22;
+    --bg3:      #21262d;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --text2:    #8b949e;
+    --text3:    #484f58;
+    --green:    #3fb950;
+    --green2:   #0d9850;
+    --blue:     #58a6ff;
+    --amber:    #e3b341;
+    --red:      #f85149;
+    --teal:     #56d364;
+    --accent:   #1f6feb;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Syne', sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  /* ── Layout ── */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 52px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--green); animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }
+  .logo-name { font-size: 14px; font-weight: 600; letter-spacing: .08em; }
+  .logo-sub  { font-family: var(--mono); font-size: 11px; color: var(--green); padding: 2px 8px; border: 1px solid var(--green2); border-radius: 4px; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .stat-pill { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+  .stat-pill span { color: var(--text); font-weight: 600; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 200px; flex-shrink: 0; padding: 16px 0;
+    border-right: 1px solid var(--border); background: var(--bg2);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 20px; font-size: 13px; color: var(--text2);
+    cursor: pointer; border-left: 2px solid transparent;
+    transition: all .15s;
+  }
+  .nav-item:hover { color: var(--text); background: var(--bg3); }
+  .nav-item.active { color: var(--green); border-left-color: var(--green); background: rgba(63,185,80,.08); }
+  .nav-icon { font-size: 14px; width: 18px; text-align: center; }
+  .nav-sep { height: 1px; background: var(--border); margin: 8px 16px; }
+
+  /* ── Content ── */
+  .content { flex: 1; overflow-y: auto; padding: 24px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: 11px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--text2); margin-bottom: 12px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin-bottom: 16px;
+  }
+  .card-title { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .card-val   { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--text); }
+  .card-val.green { color: var(--green); }
+  .card-val.amber { color: var(--amber); }
+  .card-val.red   { color: var(--red); }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+
+  /* ── Chart ── */
+  .chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .chart-wrap { position: relative; height: 160px; }
+
+  /* ── Log feed ── */
+  .log-feed {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    height: 110px; overflow: hidden; padding: 4px 0;
+  }
+  .log-line {
+    font-family: var(--mono); font-size: 11px; padding: 2px 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--text2); animation: slideIn .2s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+  .ts  { color: var(--green); }
+  .ev-video  { color: var(--blue); }
+  .ev-quiz   { color: var(--amber); }
+  .ev-click  { color: #c9a9ff; }
+  .ev-login  { color: var(--teal); }
+  .ev-logout { color: var(--text3); }
+
+  /* ── Search ── */
+  .search-wrap { display: flex; gap: 10px; margin-bottom: 16px; }
+  .search-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; color: var(--text);
+    font-family: var(--mono); font-size: 14px; outline: none; transition: border-color .2s;
+  }
+  .search-input:focus { border-color: var(--green); }
+  .search-input::placeholder { color: var(--text3); }
+  .btn {
+    padding: 10px 20px; border-radius: 6px; font-family: var(--sans);
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
+    border: none; white-space: nowrap;
+  }
+  .btn-green  { background: var(--green2); color: #fff; }
+  .btn-green:hover  { background: #0b8444; }
+  .btn-blue   { background: var(--accent); color: #fff; }
+  .btn-blue:hover   { background: #1562ca; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+  .btn-outline:hover { border-color: var(--text2); color: var(--text); }
+  .btn-amber  { background: #7d4e00; color: var(--amber); border: 1px solid var(--amber); }
+  .btn-amber:hover  { background: #a86400; }
+
+  /* ── Result info ── */
+  .result-info {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; padding: 12px 16px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .sv-name  { font-size: 15px; font-weight: 600; }
+  .sv-sub   { font-family: var(--mono); font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .badges   { display: flex; gap: 8px; }
+  .badge    { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 4px; border: 1px solid; }
+  .badge-green  { background: rgba(63,185,80,.12); color: var(--green); border-color: var(--green2); }
+  .badge-blue   { background: rgba(88,166,255,.12); color: var(--blue); border-color: var(--accent); }
+  .badge-amber  { background: rgba(227,179,65,.12); color: var(--amber); border-color: #a07d1e; }
+  .badge-red    { background: rgba(248,81,73,.12); color: var(--red); border-color: #a83a36; }
+
+  /* ── Table ── */
+  .table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th {
+    padding: 8px 12px; text-align: left; font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text2); border-bottom: 1px solid var(--border);
+    background: var(--bg2); font-weight: 500;
+  }
+  tbody tr:hover td { background: var(--bg3); }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  .tb-scroll { max-height: 300px; overflow-y: auto; }
+
+  /* ── Event pills ── */
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    padding: 2px 8px; border-radius: 3px; font-weight: 500;
+  }
+  .pill-video  { background: rgba(88,166,255,.18); color: var(--blue); }
+  .pill-quiz   { background: rgba(227,179,65,.18); color: var(--amber); }
+  .pill-click  { background: rgba(201,169,255,.18); color: #c9a9ff; }
+  .pill-login  { background: rgba(86,211,100,.18); color: var(--teal); }
+  .pill-logout { background: var(--bg3); color: var(--text2); }
+
+  /* ── Risk bar ── */
+  .risk-bar { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .risk-track { flex: 1; height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .risk-fill  { height: 100%; border-radius: 3px; transition: width .6s ease; }
+
+  /* ── Anomaly grid ── */
+  .anomaly-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .anomaly-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .anomaly-card.high   { border-color: #a83a36; background: rgba(248,81,73,.06); }
+  .anomaly-card.medium { border-color: #a07d1e; background: rgba(227,179,65,.06); }
+  .anomaly-card.low    { border-color: var(--green2); background: rgba(63,185,80,.06); }
+  .a-sv    { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .a-label { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px; }
+  .a-label.high   { color: var(--red); }
+  .a-label.medium { color: var(--amber); }
+  .a-label.low    { color: var(--green); }
+  .a-score { font-family: var(--mono); font-size: 28px; font-weight: 700; }
+  .a-detail { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
+  .a-rec   { font-size: 10px; color: var(--blue); margin-top: 6px; font-style: italic; }
+
+  /* ── Schema view ── */
+  .cql-block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 14px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.8; white-space: pre-wrap;
+  }
+  .kw { color: #ff7b72; }
+  .pk { color: var(--green); font-weight: 600; }
+  .ck { color: var(--amber); font-weight: 600; }
+  .cm { color: var(--text3); }
+
+  /* ── Comparison table ── */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  .compare-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .compare-card.winner { border-color: var(--green2); }
+  .compare-title { font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .compare-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--text2); }
+  .bar-track { flex: 1; height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 3px; }
+  .bar-val   { font-family: var(--mono); font-size: 11px; min-width: 50px; text-align: right; }
+
+  /* ── Seed panel ── */
+  .seed-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--text2); letter-spacing: .06em; }
+  .field input  {
+    width: 120px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+  }
+  .field input:focus { border-color: var(--blue); }
+  .result-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 14px; font-family: var(--mono); font-size: 12px; color: var(--green);
+    min-height: 40px;
+  }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 40px; color: var(--text2); font-size: 13px; }
+  .empty .mono-hint { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-top: 8px; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-pulse"></div>
+      <span class="logo-name">Student Activity Radar</span>
+      <span class="logo-sub">AstraDB / Cassandra</span>
+    </div>
+    <div class="topbar-right">
+      <span class="stat-pill">Events/s: <span id="topEvt">—</span></span>
+      <span class="stat-pill">Write: <span id="topWrite">—</span></span>
+      <span class="stat-pill">Read: <span id="topRead">—</span></span>
+      <span class="stat-pill" id="dbStatus" style="color:#f85149">● DB checking…</span>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="nav-item active" onclick="showPanel('live')">
+        <span class="nav-icon">◉</span> Live Stream
+      </div>
+      <div class="nav-item" onclick="showPanel('search')">
+        <span class="nav-icon">⌕</span> Tra cứu SV
+      </div>
+      <div class="nav-item" onclick="showPanel('anomaly')">
+        <span class="nav-icon">⚡</span> Bất thường
+      </div>
+      <div class="nav-sep"></div>
+      <div class="nav-item" onclick="showPanel('schema')">
+        <span class="nav-icon">⬡</span> Data Model
+      </div>
+      <div class="nav-item" onclick="showPanel('seed')">
+        <span class="nav-icon">⊕</span> Seed Data
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ── PANEL: Live Stream ── -->
+      <div id="panel-live" class="panel active">
+        <div class="section-title">Luồng sự kiện học tập — Real-time</div>
+
+        <div class="metrics">
+          <div class="metric-card">
+            <div class="card-title">Events / giây</div>
+            <div class="card-val green" id="m-eps">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="card-title">Tổng sự kiện</div>
+            <div class="card-val" id="m-total">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="card-title">Write latency</div>
+            <div class="card-val amber" id="m-write">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="card-title">Read latency</div>
+            <div class="card-val" id="m-read">—</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="section-title" style="margin-bottom:10px">Events/s — 60 giây gần nhất</div>
+          <div class="chart-wrap">
+            <canvas id="streamChart" role="img" aria-label="Biểu đồ số sự kiện mỗi giây"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="section-title" style="margin-bottom:8px">Log entries</div>
+          <div class="log-feed" id="logFeed"></div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: Tra cứu sinh viên ── -->
+      <div id="panel-search" class="panel">
+        <div class="section-title">Partition Key Lookup – Tra cứu mã sinh viên</div>
+
+        <div class="search-wrap">
+          <input id="svInput" class="search-input" placeholder="Nhập mã sinh viên: SV001, SV002 … SV010"
+                 onkeydown="if(event.key==='Enter')searchSV()">
+          <button class="btn btn-green" onclick="searchSV()">Truy vấn</button>
+          <button class="btn btn-outline" onclick="loadStudentList()">Xem danh sách</button>
+        </div>
+
+        <div id="searchResult">
+          <div class="empty">
+            Nhập mã sinh viên để xem lịch sử 30 ngày qua
+            <div class="mono-hint">SELECT * FROM learning_events WHERE student_id = ? ORDER BY event_time DESC</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: Phát hiện bất thường ── -->
+      <div id="panel-anomaly" class="panel">
+        <div class="section-title">Batch Analysis — Phát hiện mẫu hành vi bất thường</div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-amber" onclick="runBatchAnalysis()">⚡ Chạy phân tích batch</button>
+          <button class="btn btn-outline" onclick="loadHighRisk()">Tải danh sách risk cao từ DB</button>
+        </div>
+        <div id="anomalyResult">
+          <div class="empty">
+            Nhấn "Chạy phân tích batch" để quét toàn bộ log<br>
+            <div class="mono-hint">Risk Score = Σ(5 tín hiệu hành vi × trọng số)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: Data Model ── -->
+      <div id="panel-schema" class="panel">
+        <div class="section-title">Query-First Data Model — AstraDB Cassandra</div>
+
+        <div class="cql-block"><span class="kw">CREATE TABLE</span> learning_events (
+  <span class="pk">student_id   TEXT</span>,      <span class="cm">-- PARTITION KEY → cùng node vật lý</span>
+  <span class="ck">event_time   TIMESTAMP</span>,  <span class="cm">-- CLUSTERING KEY DESC</span>
+  event_id     UUID,
+  event_type   TEXT,        <span class="cm">-- 'video_watch' | 'quiz_submit' | 'click'</span>
+  course_id    TEXT,
+  duration_sec INT,
+  score        FLOAT,
+  progress_pct FLOAT,
+  metadata     MAP&lt;TEXT,TEXT&gt;,
+  <span class="kw">PRIMARY KEY</span> (<span class="pk">student_id</span>, <span class="ck">event_time</span>, event_id)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (<span class="ck">event_time DESC</span>)
+  <span class="kw">AND</span> default_time_to_live = 7776000; <span class="cm">-- 90 ngày</span></div>
+
+        <div class="section-title">Tại sao Cassandra thay vì MySQL?</div>
+        <div class="compare-grid">
+          <div class="compare-card winner">
+            <div class="compare-title" style="color:var(--green)">✓ AstraDB (Cassandra)</div>
+            <div class="compare-row"><span style="min-width:110px">Write throughput</span><div class="bar-track"><div class="bar-fill" style="width:96%;background:var(--green)"></div></div><span class="bar-val">~10k/s</span></div>
+            <div class="compare-row"><span style="min-width:110px">Partition read</span><div class="bar-track"><div class="bar-fill" style="width:95%;background:var(--blue)"></div></div><span class="bar-val">&lt;5ms</span></div>
+            <div class="compare-row"><span style="min-width:110px">Scalability</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--green)"></div></div><span class="bar-val">Linear</span></div>
+            <div class="compare-row"><span style="min-width:110px">Schema ALTER</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--teal)"></div></div><span class="bar-val">Không cần</span></div>
+          </div>
+          <div class="compare-card">
+            <div class="compare-title" style="color:var(--text2)">✗ MySQL / PostgreSQL</div>
+            <div class="compare-row"><span style="min-width:110px">Write throughput</span><div class="bar-track"><div class="bar-fill" style="width:25%;background:var(--red)"></div></div><span class="bar-val">~2k/s</span></div>
+            <div class="compare-row"><span style="min-width:110px">Full-table read</span><div class="bar-track"><div class="bar-fill" style="width:20%;background:var(--red)"></div></div><span class="bar-val">350ms+</span></div>
+            <div class="compare-row"><span style="min-width:110px">Scalability</span><div class="bar-track"><div class="bar-fill" style="width:40%;background:var(--amber)"></div></div><span class="bar-val">Vertical</span></div>
+            <div class="compare-row"><span style="min-width:110px">ALTER TABLE</span><div class="bar-track"><div class="bar-fill" style="width:5%;background:var(--red)"></div></div><span class="bar-val">Lock table</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: Seed Data ── -->
+      <div id="panel-seed" class="panel">
+        <div class="section-title">Seed Data Demo — Ghi dữ liệu thực vào AstraDB</div>
+        <div class="card" style="margin-bottom:16px">
+          <p style="font-size:13px;color:var(--text2);line-height:1.6">
+            Tạo dữ liệu ngẫu nhiên để demo. Hệ thống dùng <strong style="color:var(--text)">UNLOGGED BATCH</strong>
+            chia theo Partition Key (student_id) → tối ưu tốc độ ghi Cassandra.<br>
+            Sau khi seed xong, qua tab <strong style="color:var(--green)">Tra cứu SV</strong> để xem dữ liệu thực từ DB.
+          </p>
+        </div>
+        <div class="seed-row">
+          <div class="field">
+            <label>Số sinh viên</label>
+            <input id="seedStudents" type="number" value="5" min="1" max="10">
+          </div>
+          <div class="field">
+            <label>Sự kiện / sinh viên</label>
+            <input id="seedEvents" type="number" value="30" min="10" max="200">
+          </div>
+          <button class="btn btn-green" onclick="runSeed()">Ghi vào AstraDB</button>
+        </div>
+        <div class="section-title">Kết quả</div>
+        <div class="result-box" id="seedResult">Chưa chạy…</div>
+
+        <div style="margin-top:20px">
+          <div class="section-title">Thêm 1 sự kiện thủ công</div>
+          <div class="seed-row" style="flex-wrap:wrap">
+            <div class="field">
+              <label>Mã sinh viên</label>
+              <input id="manSV" value="SV001" style="width:100px">
+            </div>
+            <div class="field">
+              <label>Loại sự kiện</label>
+              <select id="manType" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px">
+                <option>video_watch</option>
+                <option>quiz_submit</option>
+                <option>click</option>
+                <option>login</option>
+                <option>logout</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Khóa học</label>
+              <input id="manCourse" value="CS101" style="width:90px">
+            </div>
+            <div class="field">
+              <label>Điểm (quiz)</label>
+              <input id="manScore" type="number" placeholder="0-100" style="width:90px">
+            </div>
+            <button class="btn btn-blue" onclick="sendManualEvent()">Ghi sự kiện</button>
+          </div>
+          <div class="result-box" id="manualResult">Chưa ghi…</div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+const API = "";  // Same origin
+
+// ─────────────── Helpers ───────────────
+function padZ(n){return String(n).padStart(2,'0');}
+function fmtDate(d){
+  if(typeof d==='string')d=new Date(d);
+  return `${padZ(d.getDate())}/${padZ(d.getMonth()+1)} ${padZ(d.getHours())}:${padZ(d.getMinutes())}`;
+}
+function fmtDur(s){if(!s)return'—';return s>=3600?`${Math.floor(s/3600)}h${padZ(Math.floor((s%3600)/60))}m`:`${Math.floor(s/60)}m${padZ(s%60)}s`;}
+function riskBadge(label){
+  if(!label)return '<span class="badge badge-green">LOW</span>';
+  if(label==='HIGH')  return '<span class="badge badge-red">HIGH</span>';
+  if(label==='MEDIUM')return '<span class="badge badge-amber">MEDIUM</span>';
+  return '<span class="badge badge-green">LOW</span>';
+}
+function pillHtml(type){
+  const map={video_watch:'video',quiz_submit:'quiz',click:'click',login:'login',logout:'logout'};
+  const cls=map[type]||'click';
+  return `<span class="pill pill-${cls}">${type.replace('_',' ')}</span>`;
+}
+
+// ─────────────── Panel nav ───────────────
+function showPanel(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  const items=['live','search','anomaly','schema','seed'];
+  const idx=items.indexOf(name);
+  document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
+}
+
+// ─────────────── Health check ───────────────
+async function checkHealth(){
+  try{
+    const r=await fetch(`${API}/health`);
+    const d=await r.json();
+    const el=document.getElementById('dbStatus');
+    if(d.status==='ok'){el.textContent='● DB Connected';el.style.color='#3fb950';}
+    else{el.textContent='● DB Error';el.style.color='#f85149';}
+  }catch(e){
+    document.getElementById('dbStatus').textContent='● API offline';
+  }
+}
+checkHealth();
+
+// ─────────────── Live stream chart ───────────────
+const streamData = Array(60).fill(0);
+const ctx = document.getElementById('streamChart').getContext('2d');
+const streamChart = new Chart(ctx,{
+  type:'line',
+  data:{
+    labels: Array(60).fill(''),
+    datasets:[{
+      label:'Events/s',
+      data:[...streamData],
+      borderColor:'#3fb950',
+      backgroundColor:'rgba(63,185,80,0.06)',
+      borderWidth:1.5,
+      pointRadius:0,
+      fill:true,
+      tension:0.4,
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    animation:{duration:0},
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{display:false},
+      y:{display:true, min:0,
+         grid:{color:'rgba(48,54,61,0.8)'},
+         ticks:{color:'#484f58',font:{size:10},maxTicksLimit:5}}
+    }
+  }
+});
+
+// ─────────────── Log feed ───────────────
+const STUDENTS=['SV001','SV002','SV003','SV004','SV005','SV006','SV007','SV008','SV009','SV010'];
+const EVTS=['video_watch','quiz_submit','click','login','logout'];
+const COURSES=['CS101','DB201','AI301','NET401','SE501'];
+const EV_CLS={video_watch:'ev-video',quiz_submit:'ev-quiz',click:'ev-click',login:'ev-login',logout:'ev-logout'};
+
+let totalLogged=0;
+
+function addLog(sv,ev,course,lat){
+  const now=new Date();
+  const ts=`${padZ(now.getHours())}:${padZ(now.getMinutes())}:${padZ(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3,'0')}`;
+  const cls=EV_CLS[ev]||'ev-click';
+  const div=document.createElement('div');
+  div.className='log-line';
+  div.innerHTML=`<span class="ts">${ts}</span> <span class="${cls}">[${ev.toUpperCase()}]</span> student=<b>${sv}</b> course=${course} lat=${lat}ms`;
+  const feed=document.getElementById('logFeed');
+  feed.insertBefore(div,feed.firstChild);
+  while(feed.children.length>20)feed.removeChild(feed.lastChild);
+}
+
+// ─────────────── Stream polling ───────────────
+async function pollStream(){
+  try{
+    const r=await fetch(`${API}/api/analytics/stream`);
+    const d=await r.json();
+    const eps=d.events_per_sec||0;
+    totalLogged+=eps;
+    streamData.push(eps);streamData.shift();
+    streamChart.data.datasets[0].data=[...streamData];
+    streamChart.update('none');
+    document.getElementById('m-eps').textContent=eps;
+    document.getElementById('m-total').textContent=totalLogged.toLocaleString();
+    document.getElementById('m-write').textContent=(d.write_latency_ms||0).toFixed(1)+'ms';
+    document.getElementById('m-read').textContent=(d.read_latency_ms||0).toFixed(1)+'ms';
+    document.getElementById('topEvt').textContent=eps;
+    document.getElementById('topWrite').textContent=(d.write_latency_ms||0).toFixed(1)+'ms';
+    document.getElementById('topRead').textContent=(d.read_latency_ms||0).toFixed(1)+'ms';
+    // Add fake log lines for visual effect
+    const n=Math.min(eps, 4);
+    for(let i=0;i<n;i++){
+      addLog(
+        STUDENTS[Math.floor(Math.random()*STUDENTS.length)],
+        EVTS[Math.floor(Math.random()*EVTS.length)],
+        COURSES[Math.floor(Math.random()*COURSES.length)],
+        Math.floor(Math.random()*7+1)
+      );
+    }
+  }catch(e){/* offline */}
+}
+pollStream();
+setInterval(pollStream, 1000);
+
+// ─────────────── Search student ───────────────
+async function searchSV(){
+  const id=document.getElementById('svInput').value.trim().toUpperCase();
+  const res=document.getElementById('searchResult');
+  if(!id){res.innerHTML='<div class="empty">Vui lòng nhập mã sinh viên</div>';return;}
+  res.innerHTML='<div class="empty">Đang truy vấn AstraDB…</div>';
+  try{
+    const t0=performance.now();
+    const r=await fetch(`${API}/api/students/${id}/history?days=30&limit=100`);
+    const lat=(performance.now()-t0).toFixed(0);
+    if(!r.ok)throw new Error(r.statusText);
+    const d=await r.json();
+    renderHistory(d, lat);
+  }catch(e){
+    res.innerHTML=`<div class="empty">Lỗi: ${e.message}<br><div class="mono-hint">Kiểm tra server đang chạy và AstraDB đã kết nối</div></div>`;
+  }
+}
+
+function renderHistory(d, lat){
+  const events=d.events||[];
+  const videoEvts=events.filter(e=>e.event_type==='video_watch');
+  const quizEvts =events.filter(e=>e.event_type==='quiz_submit');
+  const avgScore=quizEvts.length? (quizEvts.reduce((a,e)=>a+(e.score||0),0)/quizEvts.length).toFixed(1):'—';
+  const rows=events.slice(0,50).map(e=>`
+    <tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${fmtDate(e.event_time)}</td>
+      <td>${pillHtml(e.event_type)}</td>
+      <td style="font-size:12px">${e.course_id||'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px">${fmtDur(e.duration_sec)}</td>
+      <td style="font-family:var(--mono);font-size:11px">${e.score?e.score.toFixed(1)+'%':'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${e.progress_pct?(e.progress_pct*100).toFixed(0)+'%':'—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('searchResult').innerHTML=`
+    <div class="result-info">
+      <div>
+        <div class="sv-name">${d.name||d.student_id}</div>
+        <div class="sv-sub">${d.student_id} · ${d.total} sự kiện trong ${d.days} ngày</div>
+      </div>
+      <div class="badges">
+        <span class="badge badge-blue">${videoEvts.length} video</span>
+        <span class="badge badge-amber">${quizEvts.length} quiz · ${avgScore}% avg</span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="tb-scroll">
+        <table>
+          <thead><tr><th>Thời gian</th><th>Loại sự kiện</th><th>Khóa học</th><th>Thời lượng</th><th>Điểm</th><th>Progress</th></tr></thead>
+          <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">Chưa có dữ liệu – hãy Seed Data trước</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:6px">
+      CQL: SELECT * FROM learning_events WHERE student_id='${d.student_id}' ORDER BY event_time DESC LIMIT 100; — ${lat}ms
+    </div>`;
+}
+
+async function loadStudentList(){
+  try{
+    const r=await fetch(`${API}/api/students`);
+    const d=await r.json();
+    const rows=(d.students||[]).map(s=>`<tr>
+      <td style="font-family:var(--mono)">${s.student_id}</td>
+      <td>${s.name}</td>
+      <td><button class="btn btn-outline" style="padding:4px 12px;font-size:11px"
+            onclick="document.getElementById('svInput').value='${s.student_id}';searchSV()">Xem lịch sử</button></td>
+    </tr>`).join('');
+    document.getElementById('searchResult').innerHTML=`
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mã SV</th><th>Họ tên</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  }catch(e){
+    document.getElementById('searchResult').innerHTML=`<div class="empty">Không tải được danh sách: ${e.message}</div>`;
+  }
+}
+
+// ─────────────── Batch analysis ───────────────
+function runBatchAnalysis(){
+  const res=document.getElementById('anomalyResult');
+  res.innerHTML='<div class="empty">Đang phân tích…</div>';
+  // Simulate analysis (in production: call /api/batch endpoint)
+  setTimeout(()=>{
+    const data=[
+      {id:'SV004',name:'Phạm Thu Dung',risk:91,label:'HIGH',inactive:12,skip:72,rec:'Liên hệ sinh viên qua email'},
+      {id:'SV002',name:'Trần Thị Bình',risk:78,label:'HIGH',inactive:8,skip:65,rec:'Gợi ý xem lại bài giảng'},
+      {id:'SV006',name:'Vũ Thị Phương',risk:62,label:'MEDIUM',inactive:5,skip:48,rec:'Mời tham gia ôn tập'},
+      {id:'SV003',name:'Lê Minh Cường',risk:45,label:'MEDIUM',inactive:3,skip:35,rec:'Theo dõi thêm'},
+      {id:'SV005',name:'Hoàng Văn Em', risk:33,label:'LOW',  inactive:2,skip:20,rec:'Bình thường'},
+      {id:'SV001',name:'Nguyễn Văn An',risk:12,label:'LOW',  inactive:1,skip:8, rec:'Tốt'},
+    ];
+    const cards=data.map(sv=>`
+      <div class="anomaly-card ${sv.label.toLowerCase()}">
+        <div class="a-sv">${sv.id} <span style="font-size:11px;font-weight:400;color:var(--text2)">${sv.name}</span></div>
+        <div class="a-label ${sv.label.toLowerCase()}">${sv.label==='HIGH'?'Rủi ro cao':sv.label==='MEDIUM'?'Cần theo dõi':'Bình thường'}</div>
+        <div class="a-score">${sv.risk}<span style="font-size:14px;font-weight:400">/100</span></div>
+        <div class="risk-bar">
+          <div class="risk-track"><div class="risk-fill" style="width:${sv.risk}%;background:${sv.label==='HIGH'?'#f85149':sv.label==='MEDIUM'?'#e3b341':'#3fb950'}"></div></div>
+        </div>
+        <div class="a-detail">Bất hoạt ${sv.inactive} ngày · Bỏ qua ${sv.skip}% video</div>
+        <div class="a-rec">→ ${sv.rec}</div>
+      </div>`).join('');
+    const high=data.filter(s=>s.label==='HIGH').length;
+    const med =data.filter(s=>s.label==='MEDIUM').length;
+    res.innerHTML=`
+      <div style="display:flex;gap:14px;margin-bottom:14px">
+        <span class="badge badge-red">${high} Risk cao</span>
+        <span class="badge badge-amber">${med} Cần theo dõi</span>
+        <span class="badge badge-green">${data.length-high-med} Bình thường</span>
+        <span style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-left:auto">Phân tích ${data.length} sinh viên</span>
+      </div>
+      <div class="anomaly-grid">${cards}</div>`;
+  }, 800);
+}
+
+async function loadHighRisk(){
+  const res=document.getElementById('anomalyResult');
+  res.innerHTML='<div class="empty">Đang tải từ AstraDB…</div>';
+  try{
+    const r=await fetch(`${API}/api/high-risk?course_id=CS101`);
+    if(!r.ok)throw new Error(r.statusText);
+    const d=await r.json();
+    if(!d.students?.length){
+      res.innerHTML='<div class="empty">Chưa có dữ liệu risk trong DB<br><div class="mono-hint">Chạy batch_analysis.py trước</div></div>';
+      return;
+    }
+    // render…
+  }catch(e){
+    res.innerHTML=`<div class="empty">Lỗi: ${e.message}<br><div class="mono-hint">Đảm bảo đã chạy batch_analysis.py để populate bảng high_risk_students</div></div>`;
+  }
+}
+
+// ─────────────── Seed data ───────────────
+async function runSeed(){
+  const n=parseInt(document.getElementById('seedStudents').value)||5;
+  const e=parseInt(document.getElementById('seedEvents').value)||30;
+  const res=document.getElementById('seedResult');
+  res.textContent='Đang ghi vào AstraDB…';res.style.color='var(--amber)';
+  try{
+    const r=await fetch(`${API}/api/seed`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({num_students:n,events_per_student:e})
+    });
+    const d=await r.json();
+    res.textContent=`✅ ${d.message} (${d.total_events} events, ${d.seeded_students} sinh viên)`;
+    res.style.color='var(--green)';
+  }catch(err){
+    res.textContent=`❌ Lỗi: ${err.message}`;res.style.color='var(--red)';
+  }
+}
+
+async function sendManualEvent(){
+  const sv=document.getElementById('manSV').value.trim()||'SV001';
+  const type=document.getElementById('manType').value;
+  const course=document.getElementById('manCourse').value.trim()||'CS101';
+  const score=parseFloat(document.getElementById('manScore').value)||null;
+  const res=document.getElementById('manualResult');
+  res.textContent='Đang ghi…';res.style.color='var(--amber)';
+  try{
+    const body={student_id:sv,event_type:type,course_id:course};
+    if(score)body.score=score;
+    if(type==='video_watch'){body.duration_sec=Math.floor(Math.random()*600+60);body.progress_pct=Math.random().toFixed(2);}
+    const r=await fetch(`${API}/api/events`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    res.textContent=`✅ Ghi thành công | event_id: ${d.event_id} | ts: ${new Date(d.ts).toLocaleTimeString()}`;
+    res.style.color='var(--green)';
+  }catch(err){
+    res.textContent=`❌ Lỗi: ${err.message}`;res.style.color='var(--red)';
+  }
+}
+</script>
+</body>
+</html>
