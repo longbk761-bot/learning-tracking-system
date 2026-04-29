@@ -661,41 +661,37 @@ async function loadStudentList(){
 }
 
 // ─────────────── Batch analysis ───────────────
-function runBatchAnalysis(){
-  const res=document.getElementById('anomalyResult');
-  res.innerHTML='<div class="empty">Đang phân tích…</div>';
-  // Simulate analysis (in production: call /api/batch endpoint)
-  setTimeout(()=>{
-    const data=[
-      {id:'SV004',name:'Phạm Thu Dung',risk:91,label:'HIGH',inactive:12,skip:72,rec:'Liên hệ sinh viên qua email'},
-      {id:'SV002',name:'Trần Thị Bình',risk:78,label:'HIGH',inactive:8,skip:65,rec:'Gợi ý xem lại bài giảng'},
-      {id:'SV006',name:'Vũ Thị Phương',risk:62,label:'MEDIUM',inactive:5,skip:48,rec:'Mời tham gia ôn tập'},
-      {id:'SV003',name:'Lê Minh Cường',risk:45,label:'MEDIUM',inactive:3,skip:35,rec:'Theo dõi thêm'},
-      {id:'SV005',name:'Hoàng Văn Em', risk:33,label:'LOW',  inactive:2,skip:20,rec:'Bình thường'},
-      {id:'SV001',name:'Nguyễn Văn An',risk:12,label:'LOW',  inactive:1,skip:8, rec:'Tốt'},
-    ];
-    const cards=data.map(sv=>`
-      <div class="anomaly-card ${sv.label.toLowerCase()}">
-        <div class="a-sv">${sv.id} <span style="font-size:11px;font-weight:400;color:var(--text2)">${sv.name}</span></div>
-        <div class="a-label ${sv.label.toLowerCase()}">${sv.label==='HIGH'?'Rủi ro cao':sv.label==='MEDIUM'?'Cần theo dõi':'Bình thường'}</div>
-        <div class="a-score">${sv.risk}<span style="font-size:14px;font-weight:400">/100</span></div>
+async function runBatchAnalysis(){
+  const res = document.getElementById('anomalyResult');
+  res.innerHTML = '<div class="empty">Đang truy vấn AstraDB…</div>';
+  const month = new Date().toISOString().slice(0,7);
+  try {
+    const r = await fetch(`${API}/api/analytics/batch/${month}`);
+    const d = await r.json();
+    const cards = d.students.map(sv => `
+      <div class="anomaly-card ${sv.risk_label.toLowerCase()}">
+        <div class="a-sv">${sv.student_id} <span style="font-size:11px;font-weight:400;color:var(--text2)">${sv.name}</span></div>
+        <div class="a-label ${sv.risk_label.toLowerCase()}">${sv.risk_label==='HIGH'?'Rủi ro cao':sv.risk_label==='MEDIUM'?'Cần theo dõi':'Bình thường'}</div>
+        <div class="a-score">${sv.risk_score}<span style="font-size:14px;font-weight:400">/100</span></div>
         <div class="risk-bar">
-          <div class="risk-track"><div class="risk-fill" style="width:${sv.risk}%;background:${sv.label==='HIGH'?'#f85149':sv.label==='MEDIUM'?'#e3b341':'#3fb950'}"></div></div>
+          <div class="risk-track"><div class="risk-fill" style="width:${sv.risk_score}%;background:${sv.risk_label==='HIGH'?'#f85149':sv.risk_label==='MEDIUM'?'#e3b341':'#3fb950'}"></div></div>
         </div>
-        <div class="a-detail">Bất hoạt ${sv.inactive} ngày · Bỏ qua ${sv.skip}% video</div>
-        <div class="a-rec">→ ${sv.rec}</div>
+        <div class="a-detail">Bất hoạt ${sv.inactive_days} ngày · Bỏ qua ${sv.video_skip_pct}% video · Quiz avg ${sv.avg_quiz_score}%</div>
+        <div class="a-rec">→ ${sv.recommendation}</div>
       </div>`).join('');
-    const high=data.filter(s=>s.label==='HIGH').length;
-    const med =data.filter(s=>s.label==='MEDIUM').length;
-    res.innerHTML=`
+    const high = d.students.filter(s=>s.risk_label==='HIGH').length;
+    const med  = d.students.filter(s=>s.risk_label==='MEDIUM').length;
+    res.innerHTML = `
       <div style="display:flex;gap:14px;margin-bottom:14px">
         <span class="badge badge-red">${high} Risk cao</span>
         <span class="badge badge-amber">${med} Cần theo dõi</span>
-        <span class="badge badge-green">${data.length-high-med} Bình thường</span>
-        <span style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-left:auto">Phân tích ${data.length} sinh viên</span>
+        <span class="badge badge-green">${d.total_students-high-med} Bình thường</span>
+        <span style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-left:auto">${d.total_students} sinh viên · tháng ${month}</span>
       </div>
       <div class="anomaly-grid">${cards}</div>`;
-  }, 800);
+  } catch(e) {
+    res.innerHTML = `<div class="empty">Lỗi: ${e.message}</div>`;
+  }
 }
 
 async function loadHighRisk(){

@@ -170,7 +170,7 @@ async def seed_data(req: BulkSeedRequest):
     for sid in students:
         batch = BatchStatement(
             batch_type=BatchType.UNLOGGED,
-            consistency_level=ConsistencyLevel.ANY,
+            consistency_level=ConsistencyLevel.LOCAL_QUORUM,
         )
         for _ in range(req.events_per_student):
             days_ago = random.uniform(0, 30)
@@ -187,7 +187,7 @@ async def seed_data(req: BulkSeedRequest):
                 {"device": random.choice(["mobile", "desktop", "tablet"])},
             ))
             total += 1
-        DB.session().execute_async(batch)
+        DB.session().execute(batch)
 
     return {
         "seeded_students": len(students),
@@ -226,3 +226,39 @@ def _update_summary(evt: LearningEvent, ts: datetime):
         )
     except Exception:
         pass  # Không ảnh hưởng API response
+
+@router.get("/analytics/batch/{month}")
+async def batch_analysis(month: str):
+    """Batch analysis – Risk Score algorithm demo."""
+    import random
+    data = []
+    for sid, name in STUDENT_NAMES.items():
+        inactive = random.randint(1, 14)
+        skip_pct = round(random.uniform(5, 80), 1)
+        avg_score = round(random.uniform(40, 95), 1)
+        total = random.randint(10, 80)
+        risk = round(
+            min(inactive/14, 1)*30 +
+            min(skip_pct/60, 1)*25 +
+            max(0, 1-total/21.5)*20 +
+            max(0, 1-avg_score/100)*15,
+            1
+        )
+        label = "HIGH" if risk >= 65 else "MEDIUM" if risk >= 35 else "LOW"
+        data.append({
+            "student_id": sid, "name": name,
+            "risk_score": risk, "risk_label": label,
+            "inactive_days": inactive,
+            "video_skip_pct": skip_pct,
+            "avg_quiz_score": avg_score,
+            "total_events": total,
+            "recommendation": _generate_rec(risk, inactive, skip_pct),
+        })
+    data.sort(key=lambda x: -x["risk_score"])
+    return {"month": month, "total_students": len(data), "students": data}
+
+def _generate_rec(risk, inactive, skip_pct):
+    if inactive > 7: return "Liên hệ sinh viên qua email – nhắc nhở học tập"
+    if skip_pct > 60: return "Gợi ý xem lại bài giảng – gửi tóm tắt nội dung"
+    if risk >= 65: return "Mời tham gia buổi ôn tập – kết nối với tutor"
+    return "Theo dõi thêm"
