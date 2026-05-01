@@ -49,23 +49,24 @@ Mở trình duyệt: **http://localhost:8000**
 ---
 
 ## Cấu trúc project
+```text
 learning-tracking-system/
 ├── app/
-│   ├── main.py           # FastAPI entry point
-│   ├── database.py       # AstraDB connection + Prepared Statements
-│   ├── models.py         # Pydantic schemas
+│   ├── main.py              # FastAPI entry point
+│   ├── database.py          # AstraDB connection + Prepared Statements
+│   ├── models.py            # Pydantic schemas
 │   ├── api/
-│   │   └── endpoints.py  # /events, /students, /seed, /analytics
+│   │   └── endpoints.py     # /events, /students, /seed, /analytics
 │   ├── services/
 │   │   └── batch_analysis.py
 │   └── static/
-│       ├── index.html    # Web GUI
-│       └── tracker.js    # Client SDK
-├── schema.cql            # CQL schema
+│       ├── index.html       # Web GUI
+│       └── tracker.js       # Client SDK
+├── schema.cql               # CQL schema
 ├── requirements.txt
 ├── .env.example
 └── README.md
----
+```
 
 ## API Endpoints
 
